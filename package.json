@@ -1,0 +1,16 @@
+{
+  "name": "scanrx-backend",
+  "version": "1.0.0",
+  "description": "ScanRx Drug Analysis Backend API",
+  "main": "api/analyze.js",
+  "scripts": {
+    "start": "node api/analyze.js",
+    "dev": "vercel dev"
+  },
+  "dependencies": {
+    "multer": "^1.4.5-lts.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

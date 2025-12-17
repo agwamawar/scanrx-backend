@@ -1,19 +1,13 @@
 {
   "version": 2,
-  "builds": [
+  "rewrites": [
     {
-      "src": "api/**/*.js",
-      "use": "@vercel/node"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/v1/analyze",
-      "dest": "/api/analyze.js"
+      "source": "/v1/analyze",
+      "destination": "/api/analyze"
     },
     {
-      "src": "/health",
-      "dest": "/api/health.js"
+      "source": "/health",
+      "destination": "/api/health"
     }
   ]
 }

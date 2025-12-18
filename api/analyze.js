@@ -1,4 +1,6 @@
 const multer = require('multer');
+const { cachedEmdexRequest, EmdexError, CACHE_TTL } = require('./services/emdex-service');
+const { transformBrandResults } = require('./services/drug-transformer');
 
 // Configure multer for memory storage
 const upload = multer({
@@ -209,12 +211,142 @@ module.exports = async (req, res) => {
       return res.status(500).json({ error: 'Failed to parse analysis result' });
     }
 
+    // Step 2: Verify against EMDEX if NAFDAC number found
+    let verification = {
+      verified: false,
+      source: null,
+      emdex_drug: null,
+      verified_at: null,
+    };
+
+    const nafdacNumber = analysisResult.nafdac_number;
+    
+    if (nafdacNumber && nafdacNumber.trim() !== '') {
+      console.log(`[EMDEX] Verifying NAFDAC number: ${nafdacNumber}`);
+      
+      try {
+        // Search EMDEX for the drug by NAFDAC number or brand name
+        const searchQuery = nafdacNumber;
+        const emdexResponse = await cachedEmdexRequest(
+          '/api/v1/brands/search',
+          { query: searchQuery },
+          CACHE_TTL.VERIFY
+        );
+
+        // Remove cache metadata
+        if (emdexResponse._cache) {
+          delete emdexResponse._cache;
+        }
+
+        // Transform results
+        const results = transformBrandResults(emdexResponse);
+
+        if (results && results.length > 0) {
+          // Look for exact NAFDAC match
+          const normalizedNafdac = nafdacNumber.toUpperCase().replace(/\s+/g, '');
+          const exactMatch = results.find(drug => {
+            const drugNafdac = (drug.nafdac_number || '').toUpperCase().replace(/\s+/g, '');
+            return drugNafdac === normalizedNafdac;
+          });
+
+          if (exactMatch) {
+            verification = {
+              verified: true,
+              source: 'EMDEX/NAFDAC Database',
+              emdex_drug: exactMatch,
+              verified_at: new Date().toISOString(),
+            };
+            console.log(`[EMDEX] Verified: ${exactMatch.brand_name}`);
+          } else {
+            // Try brand name match if no NAFDAC match
+            const brandMatch = results.find(drug => {
+              const drugBrand = (drug.brand_name || '').toLowerCase();
+              const llamaBrand = (analysisResult.brand_name || '').toLowerCase();
+              return drugBrand.includes(llamaBrand) || llamaBrand.includes(drugBrand);
+            });
+
+            if (brandMatch) {
+              verification = {
+                verified: true,
+                source: 'EMDEX/NAFDAC Database',
+                emdex_drug: brandMatch,
+                verified_at: new Date().toISOString(),
+              };
+              console.log(`[EMDEX] Verified by brand: ${brandMatch.brand_name}`);
+            }
+          }
+        }
+
+        // If not found by NAFDAC, try searching by brand name
+        if (!verification.verified && analysisResult.brand_name) {
+          console.log(`[EMDEX] Searching by brand name: ${analysisResult.brand_name}`);
+          
+          const brandSearchResponse = await cachedEmdexRequest(
+            '/api/v1/brands/search',
+            { query: analysisResult.brand_name },
+            CACHE_TTL.SEARCH
+          );
+
+          if (brandSearchResponse._cache) {
+            delete brandSearchResponse._cache;
+          }
+
+          const brandResults = transformBrandResults(brandSearchResponse);
+
+          if (brandResults && brandResults.length > 0) {
+            // Find closest brand name match
+            const llamaBrand = (analysisResult.brand_name || '').toLowerCase();
+            const brandMatch = brandResults.find(drug => {
+              const drugBrand = (drug.brand_name || '').toLowerCase();
+              return drugBrand === llamaBrand || 
+                     drugBrand.includes(llamaBrand) || 
+                     llamaBrand.includes(drugBrand);
+            });
+
+            if (brandMatch) {
+              verification = {
+                verified: true,
+                source: 'EMDEX/NAFDAC Database',
+                emdex_drug: brandMatch,
+                verified_at: new Date().toISOString(),
+              };
+              console.log(`[EMDEX] Verified by brand search: ${brandMatch.brand_name}`);
+            }
+          }
+        }
+
+      } catch (emdexError) {
+        console.error('[EMDEX] Verification error:', emdexError.message);
+        // Continue without verification - don't fail the whole request
+        verification.error = 'EMDEX verification temporarily unavailable';
+      }
+    } else {
+      console.log('[EMDEX] No NAFDAC number found, skipping verification');
+    }
+
+    // Build enhanced response
+    const enhancedResult = {
+      success: true,
+      analysis: analysisResult,
+      verification: verification,
+      // Computed fields for easy access
+      is_verified: verification.verified,
+      display_brand_name: verification.emdex_drug?.brand_name || analysisResult.brand_name || null,
+      display_generic_name: verification.emdex_drug?.generic_name || analysisResult.generic_name || null,
+      display_manufacturer: verification.emdex_drug?.manufacturer || analysisResult.manufacturer || null,
+      display_nafdac_number: verification.emdex_drug?.nafdac_number || analysisResult.nafdac_number || null,
+    };
+
     // Return successful result
-    console.log('Analysis complete:', analysisResult.brand_name || 'Unknown');
-    return res.status(200).json(analysisResult);
+    console.log('Analysis complete:', enhancedResult.display_brand_name || 'Unknown', 
+                '| Verified:', verification.verified);
+    return res.status(200).json(enhancedResult);
 
   } catch (error) {
     console.error('Server error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ 
+      success: false,
+      error: 'Internal server error' 
+    });
   }
 };

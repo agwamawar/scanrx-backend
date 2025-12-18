@@ -121,12 +121,142 @@ Health check endpoint.
 }
 ```
 
+### POST /api/drugs/search
+
+Unified drug search - searches both brand and generic names via EMDEX.
+
+**Request:**
+```json
+{
+  "query": "panadol",
+  "type": "all",
+  "limit": 20
+}
+```
+
+- `query` (required): Search term
+- `type` (optional): "all" | "brand" | "generic" (default: "all")
+- `limit` (optional): Max results to return (default: 20)
+
+**Response:**
+```json
+{
+  "success": true,
+  "query": "panadol",
+  "source": "emdex",
+  "type": "all",
+  "results": [
+    {
+      "id": "emdex_brand_123",
+      "type": "brand",
+      "brand_name": "Panadol Extra",
+      "generic_name": "Paracetamol + Caffeine",
+      "manufacturer": "GlaxoSmithKline",
+      "strength": "500mg/65mg",
+      "dosage_form": "Tablet",
+      "nafdac_number": "A4-0123",
+      "is_verified": true,
+      "source": "emdex"
+    }
+  ],
+  "total": 25,
+  "brand_count": 15,
+  "generic_count": 10
+}
+```
+
+### POST /api/drugs/search/brands
+
+Search brand name drugs only.
+
+**Request:**
+```json
+{
+  "query": "panadol",
+  "limit": 20
+}
+```
+
+### POST /api/drugs/search/generic
+
+Search generic name drugs only.
+
+**Request:**
+```json
+{
+  "query": "paracetamol",
+  "limit": 20
+}
+```
+
+### GET /api/drugs/{id}
+
+Get comprehensive details for a specific drug.
+
+**URL Examples:**
+- `/api/drugs/emdex_brand_12345`
+- `/api/drugs/emdex_generic_67890`
+
+**Response:**
+```json
+{
+  "success": true,
+  "drug": {
+    "id": "emdex_brand_12345",
+    "type": "brand",
+    "source": "emdex",
+    "brand_name": "Panadol Extra",
+    "generic_name": "Paracetamol + Caffeine",
+    "manufacturer": "GlaxoSmithKline",
+    "manufacturer_country": "Nigeria",
+    "nafdac_number": "A4-0123",
+    "is_verified": true,
+    "verification_source": "EMDEX/NAFDAC Database",
+    "strength": "500mg/65mg",
+    "dosage_form": "Tablet",
+    "pack_sizes": ["12 tablets", "24 tablets"],
+    "therapeutic_class": "Analgesic",
+    "active_ingredients": [
+      { "name": "Paracetamol", "amount": "500mg" },
+      { "name": "Caffeine", "amount": "65mg" }
+    ],
+    "indications": ["Headache", "Fever", "Pain"],
+    "contraindications": ["Hypersensitivity"],
+    "side_effects": ["Nausea", "Allergic reactions"],
+    "warnings": ["Do not exceed 8 tablets in 24 hours"],
+    "dosage_instructions": {
+      "adults": "1-2 tablets every 4-6 hours",
+      "children": "Not recommended under 12",
+      "elderly": "Use with caution"
+    },
+    "prescription_required": false,
+    "similar_drugs": [...]
+  }
+}
+```
+
+**Error Responses:**
+- `400` - Invalid drug ID format
+- `404` - Drug not found
+- `503` - Drug database unavailable
+
 ## Environment Variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `LLAMA_API_KEY` | Yes | Your Together AI / Groq / Fireworks API key |
 | `LLAMA_PROVIDER` | No | Provider to use: `together` (default), `groq`, or `fireworks` |
+| `EMDEX_API_URL` | Yes | EMDEX API base URL (e.g., `https://sandbox.emdexapi.com`) |
+| `EMDEX_EMAIL` | Yes | Your EMDEX account email |
+| `EMDEX_PASSWORD` | Yes | Your EMDEX account password |
+
+### EMDEX API (Drug Database)
+
+EMDEX is the authoritative source for Nigerian drug information. To set up:
+
+1. Copy `.env.example` to `.env` for local development
+2. Add your EMDEX credentials to `.env`
+3. For Vercel deployment, add these in Settings → Environment Variables
 
 ## Testing
 
@@ -135,6 +265,27 @@ Test your deployed API:
 ```bash
 # Health check
 curl https://your-app.vercel.app/health
+
+# Test EMDEX authentication
+curl https://your-app.vercel.app/api/test/emdex-auth
+
+# Search drugs (unified)
+curl -X POST https://your-app.vercel.app/api/drugs/search \
+  -H "Content-Type: application/json" \
+  -d '{"query": "panadol", "type": "all"}'
+
+# Search brand drugs only
+curl -X POST https://your-app.vercel.app/api/drugs/search/brands \
+  -H "Content-Type: application/json" \
+  -d '{"query": "panadol"}'
+
+# Search generic drugs only
+curl -X POST https://your-app.vercel.app/api/drugs/search/generic \
+  -H "Content-Type: application/json" \
+  -d '{"query": "paracetamol"}'
+
+# Get drug details
+curl https://your-app.vercel.app/api/drugs/emdex_brand_12345
 
 # Analyze an image
 curl -X POST https://your-app.vercel.app/v1/analyze \

@@ -101,25 +101,25 @@ module.exports = async (req, res) => {
 
     console.log(`Processing image: ${req.file.size} bytes`);
 
-    // Determine which API provider to use
+    // Use Together AI for Llama Vision (recommended - has free tier with vision)
+    // Groq no longer offers vision models as of late 2024
     const provider = process.env.LLAMA_PROVIDER || 'together';
     let apiUrl, model;
 
     switch (provider) {
-      case 'groq':
-        apiUrl = 'https://api.groq.com/openai/v1/chat/completions';
-        model = 'llama-3.2-11b-vision-preview';
-        break;
       case 'fireworks':
         apiUrl = 'https://api.fireworks.ai/inference/v1/chat/completions';
         model = 'accounts/fireworks/models/llama-v3p2-11b-vision-instruct';
         break;
       case 'together':
       default:
+        // Together AI - recommended, has Llama 3.2 Vision on free tier
         apiUrl = 'https://api.together.xyz/v1/chat/completions';
         model = 'meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo';
         break;
     }
+    
+    console.log(`Using provider: ${provider}, model: ${model}`);
 
     // Build request body
     const requestBody = {
